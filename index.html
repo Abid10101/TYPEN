@@ -100,5 +100,30 @@
             }
         });
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<input type="file" id="pdfUpload" accept="application/pdf">
+<pre id="output"></pre>
+
+<script>
+document.getElementById("pdfUpload").addEventListener("change", function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function() {
+        const typedarray = new Uint8Array(this.result);
+        pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+            pdf.getPage(1).then(page => {  // Extract text from first page
+                page.getTextContent().then(textContent => {
+                    let text = textContent.items.map(item => item.str).join(" ");
+                    document.getElementById("output").textContent = text;
+                });
+            });
+        });
+    };
+    reader.readAsArrayBuffer(file);
+});
+</script>
+
 </body>
 </html>
