@@ -3,127 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEET Typing Practice with PDF Upload</title>
+    <title>NEET Typing Practice</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 50px;
-        }
-        #sentence {
-            font-size: 20px;
-            margin-bottom: 20px;
-        }
-        #typingArea {
-            width: 80%;
-            height: 100px;
-            font-size: 18px;
-        }
-        #result {
-            margin-top: 20px;
-            font-weight: bold;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 30px; }
+        #sentence { font-size: 24px; margin-bottom: 20px; letter-spacing: 1px; }
+        .correct { color: green; }
+        .wrong { color: red; }
+        .remaining { color: gray; }
+        #typingArea { outline: none; border: none; font-size: 24px; text-align: center; width: 80%;
+            background: transparent; caret-color: blue; color: transparent; position: absolute; top: 58%;
+            left: 50%; transform: translate(-50%, -50%); }
+        #stats { margin-top: 20px; font-size: 18px; }
     </style>
 </head>
 <body>
-    <h1>NEET Typing Practice</h1>
+    <h2>📖 Upload NEET Study Material (PDF) & Practice Typing</h2>
     <input type="file" id="pdfUpload" accept="application/pdf">
-    <button onclick="extractText()">Extract Key Points</button>
-    <p id="sentence">Upload a PDF and click "Extract Key Points".</p>
-    <textarea id="typingArea" placeholder="Start typing here..." disabled></textarea>
-    <br><br>
-    <button onclick="startTest()">Start</button>
-    <p id="result"></p>
+    <p id="sentence"></p>
+    <input type="text" id="typingArea" autofocus>
+    <p id="stats">Accuracy: 100% | WPM: 0 | Errors: 0</p>
     
     <script>
-        let keyPoints = [];
+        let sentences = [];
         let currentIndex = 0;
         let startTime;
+        let errorCount = 0;
 
-        function extractText() {
-            const file = document.getElementById("pdfUpload").files[0];
-            if (!file) {
-                alert("Please upload a PDF first.");
-                return;
-            }
-            
+        document.getElementById("pdfUpload").addEventListener("change", function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = function() {
-                const pdfText = reader.result;
-                keyPoints = generateKeyPoints(pdfText);
-                if (keyPoints.length > 0) {
-                    document.getElementById("sentence").innerText = "Key points extracted. Click Start to practice.";
-                } else {
-                    alert("No key points found. Try another file.");
-                }
+                const typedarray = new Uint8Array(this.result);
+                pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+                    let fullText = "";
+                    let promises = [];
+                    for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
+                        promises.push(
+                            pdf.getPage(i).then(page => {
+                                return page.getTextContent().then(textContent => {
+                                    let pageText = textContent.items.map(item => item.str).join(" ");
+                                    fullText += pageText + " ";
+                                });
+                            })
+                        );
+                    }
+                    Promise.all(promises).then(() => {
+                        sentences = summarizeText(fullText);
+                        if (sentences.length > 0) {
+                            displayNextSentence();
+                        } else {
+                            document.getElementById("sentence").textContent = "No readable text found!";
+                        }
+                    });
+                });
             };
-            reader.readAsText(file);
+            reader.readAsArrayBuffer(file);
+        });
+
+        function summarizeText(text) {
+            let lines = text.split(". ").filter(s => s.length > 20);
+            return lines.slice(0, 10); // Take first 10 key sentences
         }
-        
-        function generateKeyPoints(text) {
-            let lines = text.split(". ");
-            return lines.filter(line => line.length > 20); 
-        }
-        
-        function startTest() {
-            if (keyPoints.length === 0) {
-                alert("Please extract key points first.");
-                return;
-            }
-            currentIndex = 0;
-            displayNextSentence();
-        }
-        
+
         function displayNextSentence() {
-            if (currentIndex < keyPoints.length) {
-                document.getElementById("sentence").innerText = keyPoints[currentIndex];
+            if (currentIndex < sentences.length) {
+                let text = sentences[currentIndex];
+                document.getElementById("sentence").innerHTML = generateHTML(text, 0);
                 document.getElementById("typingArea").value = "";
-                document.getElementById("typingArea").disabled = false;
-                document.getElementById("typingArea").focus();
                 startTime = new Date().getTime();
+                errorCount = 0;
+                currentIndex++;
             } else {
-                document.getElementById("sentence").innerText = "All key points completed!";
-                document.getElementById("typingArea").disabled = true;
+                document.getElementById("sentence").innerHTML = "✅ You've completed all sentences!";
             }
         }
-        
+
         document.getElementById("typingArea").addEventListener("input", function() {
             let typedText = this.value;
-            if (typedText === keyPoints[currentIndex]) {
-                let endTime = new Date().getTime();
-                let timeTaken = (endTime - startTime) / 1000;
-                let words = keyPoints[currentIndex].split(" ").length;
-                let speed = (words / (timeTaken / 60)).toFixed(2);
-                document.getElementById("result").innerText = `Completed in ${timeTaken} seconds! Speed: ${speed} WPM`;
-                currentIndex++;
-                setTimeout(displayNextSentence, 1000);
+            let originalText = sentences[currentIndex - 1] || "";
+            document.getElementById("sentence").innerHTML = generateHTML(originalText, typedText.length);
+            updateStats(typedText, originalText);
+            if (typedText.trim() === originalText.trim()) {
+                setTimeout(displayNextSentence, 500);
             }
         });
+
+        function generateHTML(text, typedLength) {
+            let html = "";
+            for (let i = 0; i < text.length; i++) {
+                if (i < typedLength) {
+                    let typedChar = document.getElementById("typingArea").value[i] || "";
+                    let correctChar = text[i];
+                    let className = (typedChar === correctChar) ? "correct" : "wrong";
+                    if (typedChar !== correctChar) errorCount++;
+                    html += `<span class="${className}">${correctChar}</span>`;
+                } else {
+                    html += `<span class="remaining">${text[i]}</span>`;
+                }
+            }
+            return html;
+        }
+
+        function updateStats(typedText, originalText) {
+            let elapsedTime = (new Date().getTime() - startTime) / 60000; // Minutes
+            let wordsTyped = typedText.split(" ").length;
+            let wpm = Math.round(wordsTyped / elapsedTime) || 0;
+            let accuracy = Math.max(0, Math.round(((typedText.length - errorCount) / typedText.length) * 100)) || 100;
+            document.getElementById("stats").textContent = `Accuracy: ${accuracy}% | WPM: ${wpm} | Errors: ${errorCount}`;
+        }
     </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-<input type="file" id="pdfUpload" accept="application/pdf">
-<pre id="output"></pre>
-
-<script>
-document.getElementById("pdfUpload").addEventListener("change", function(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function() {
-        const typedarray = new Uint8Array(this.result);
-        pdfjsLib.getDocument(typedarray).promise.then(pdf => {
-            pdf.getPage(1).then(page => {  // Extract text from first page
-                page.getTextContent().then(textContent => {
-                    let text = textContent.items.map(item => item.str).join(" ");
-                    document.getElementById("output").textContent = text;
-                });
-            });
-        });
-    };
-    reader.readAsArrayBuffer(file);
-});
-</script>
-
 </body>
 </html>
